@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 
+use rand::random;
 use std::{error::Error, io};
 
 pub const SCREEN_WIDTH: usize = 64;
@@ -204,6 +205,40 @@ impl Cpu {
                 let vf = (self.variable_registers[nibble2 as usize] >> 7) & 1;
                 self.variable_registers[nibble2 as usize] <<= 1;
                 self.variable_registers[0xF] = vf;
+            }
+            // SKIP if VX != VY
+            (9, _, _, 0) => {
+                if self.variable_registers[nibble2 as usize]
+                    != self.variable_registers[nibble3 as usize]
+                {
+                    self.pc += 2;
+                }
+            }
+            // I = 0xNNN
+            (0xA, _, _, _) => {
+                self.index_register = op & 0xFFF;
+            }
+            // JMP TO V0 + NNN
+            (0xB, _, _, _) => {
+                let nnn = op & 0xFFF;
+                self.pc = (self.variable_registers[0] as u16) + nnn;
+            }
+            // VX = RAND & NN
+            (0xC, _, _, _) => {
+                let rand: u8 = random();
+                let nn = (op & 0xFF) as u8;
+                self.variable_registers[nibble2 as usize] = rand & nn;
+            }
+            // Display
+            (0xD, _, _, _) => {
+                let x = self.variable_registers[nibble2 as usize];
+                let y = self.variable_registers[nibble3 as usize];
+
+                let width: u8 = 8;
+                let height = nibble4;
+
+                // If VF is set: pixel is flipped
+                let mut flipped = false;
             }
             (_, _, _, _) => unimplemented!("Opcode not implemented: {op}"),
         }
