@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 
 use rand::random;
-use std::{error::Error, io};
+use std::io;
 
 pub const SCREEN_WIDTH: usize = 64;
 pub const SCREEN_HEIGHT: usize = 32;
@@ -33,7 +33,7 @@ const FONTSET: [u8; FONTSET_SIZE] = [
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 ];
 
-struct Cpu {
+pub struct Cpu {
     memory: [u8; MEM_SIZE],
     display: [bool; SCREEN_WIDTH * SCREEN_HEIGHT],
     pc: u16,
@@ -90,6 +90,7 @@ impl Cpu {
     }
 
     fn execute(&mut self, op: u16) {
+        println!("{:0x?}", op);
         let nibble1 = (op & 0xF000) >> 12;
         let nibble2 = (op & 0x0F00) >> 8;
         let nibble3 = (op & 0x00F0) >> 4;
@@ -231,7 +232,35 @@ impl Cpu {
             }
             // DISPLAY SPRITE
             (0xD, _, _, _) => {
-                self.display_sprite(nibble2, nibble3, nibble4);
+                // self.display_sprite(nibble2, nibble3, nibble4);
+
+                // Get the (x, y) coords for our sprite
+                let x_coord = self.variable_registers[nibble2 as usize] as u16;
+                let y_coord = self.variable_registers[nibble3 as usize] as u16;
+                // The last digit determines how many rows high our sprite is
+                let num_rows = nibble4;
+                // Keep track if any pixels were flipped
+                let mut flipped = false;
+                // Iterate over each row of our sprite
+                for y_line in 0..num_rows {
+                    // Determine which memory address our row's data is stored
+                    let addr = self.index_register + y_line as u16;
+                    let pixels = self.memory[addr as usize];
+                    // Iterate over each column in our row
+                    for x_line in 0..8 {
+                        // Use a mask to fetch current pixel's bit. Only flip if a 1
+                        if (pixels & (0b1000_0000 >> x_line)) != 0 {
+                            // Sprites should wrap around screen, so apply modulo
+                            let x = (x_coord + x_line) as usize % SCREEN_WIDTH;
+                            let y = (y_coord + y_line) as usize % SCREEN_HEIGHT;
+                            // Get our pixel's index for our 1D screen array
+                            let idx = x + SCREEN_WIDTH * y;
+                            // Check if we're about to flip the pixel and set
+                            flipped |= self.display[idx];
+                            self.display[idx] ^= true;
+                        }
+                    }
+                }
             }
             // SKIP IF KEY IS PRESSED
             (0xE, _, 9, 0xE) => {
@@ -265,6 +294,20 @@ impl Cpu {
                     self.pc -= 2;
                 }
             }
+            // (0xF, _, 0, 0xA) => {
+            //     let x = nibble2 as usize;
+            //     let mut pressed = false;
+            //     for i in 0..self.keys.len() {
+            //         if self.keys[i] {
+            //             self.variable_registers[x] = i as u8;
+            //             pressed = true;
+            //             break;
+            //         }
+            //     }
+            //     if !pressed {
+            //         // Redo opcode
+            //         self.pc -= 2;
+            //     }
             // DT = VX
             (0xF, _, 1, 5) => {
                 self.delay_timer = self.variable_registers[nibble2 as usize];
@@ -298,19 +341,19 @@ impl Cpu {
                 x /= 10;
                 let highest = x % 10;
 
-                self.variable_registers[i] = highest;
-                self.variable_registers[i + 1] = middle;
-                self.variable_registers[i + 2] = least;
+                self.memory[i] = highest;
+                self.memory[i + 1] = middle;
+                self.memory[i + 2] = least;
             }
             // STORE V0 TO VX INTO I
             (0xF, _, 5, 5) => {
-                for idx in 0..nibble2 {
+                for idx in 0..=nibble2 {
                     self.memory[(nibble2 + idx) as usize] = self.variable_registers[idx as usize];
                 }
             }
             // LOAD V0 TO VX INTO I
             (0xF, _, 6, 5) => {
-                for idx in 0..nibble2 {
+                for idx in 0..=nibble2 {
                     self.variable_registers[idx as usize] = self.memory[(nibble2 + idx) as usize];
                 }
             }
@@ -358,9 +401,21 @@ impl Cpu {
         self.display = [false; SCREEN_WIDTH * SCREEN_HEIGHT];
     }
 
-    fn load_rom(&self, path: &str) -> Result<(), io::Error> {
-        //TODO: load ROM into memory at location 512
-        todo!()
+    pub fn load_rom(&mut self, data: &[u8]) -> Result<(), io::Error> {
+        let start = START_ADDR as usize;
+        let end = start + data.len();
+
+        self.memory[start..end].copy_from_slice(data);
+        Ok(())
+    }
+
+    pub fn get_display(&self) -> &[bool] {
+        &self.display
+    }
+
+    pub fn keypress(&mut self, idx: usize, pressed: bool) {
+        // TODO: Return Error if idx >= 16
+        self.keys[idx] = pressed;
     }
 
     fn push(&mut self, val: u16) {
@@ -371,11 +426,4 @@ impl Cpu {
         self.sp -= 1;
         self.stack[self.sp as usize]
     }
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    let mut cpu = Cpu::setup_cpu();
-    cpu.load_rom("TODO")?;
-
-    Ok(())
 }
