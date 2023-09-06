@@ -229,16 +229,29 @@ impl Cpu {
                 let nn = (op & 0xFF) as u8;
                 self.variable_registers[nibble2 as usize] = rand & nn;
             }
-            // Display
+            // Display (DXYN)
             (0xD, _, _, _) => {
-                let x = self.variable_registers[nibble2 as usize];
-                let y = self.variable_registers[nibble3 as usize];
+                let x = self.variable_registers[nibble2 as usize] % 64;
+                let y = self.variable_registers[nibble3 as usize] % 32;
 
-                let width: u8 = 8;
-                let height = nibble4;
-
-                // If VF is set: pixel is flipped
                 let mut flipped = false;
+                let mask: u8 = 0b10000000;
+                self.variable_registers[0xF] = 0;
+
+                for row in 0..nibble4 {
+                    let sprite_row = self.index_register + row;
+                    let pixel = self.memory[sprite_row as usize];
+                    for column in 0..8 {
+                        if (pixel & (mask >> column)) != 0 {
+                            self.display[(x * y) as usize] = false;
+                            flipped = true;
+                        }
+                        if (pixel & (mask >> column)) != 0 && !self.display[(x * y) as usize] {
+                            self.display[(x * y) as usize] = true;
+                        }
+                    }
+                }
+                self.variable_registers[0xF] = if flipped { 1 } else { 0 };
             }
             (_, _, _, _) => unimplemented!("Opcode not implemented: {op}"),
         }
