@@ -229,31 +229,115 @@ impl Cpu {
                 let nn = (op & 0xFF) as u8;
                 self.variable_registers[nibble2 as usize] = rand & nn;
             }
-            // Display (DXYN)
+            // DISPLAY SPRITE
             (0xD, _, _, _) => {
-                let x = self.variable_registers[nibble2 as usize] % 64;
-                let y = self.variable_registers[nibble3 as usize] % 32;
-
-                let mut flipped = false;
-                let mask: u8 = 0b10000000;
-                self.variable_registers[0xF] = 0;
-
-                for row in 0..nibble4 {
-                    let sprite_row = self.index_register + row;
-                    let pixel = self.memory[sprite_row as usize];
-                    for column in 0..8 {
-                        if (pixel & (mask >> column)) != 0 {
-                            self.display[(x * y) as usize] = false;
-                            flipped = true;
-                        }
-                        if (pixel & (mask >> column)) != 0 && !self.display[(x * y) as usize] {
-                            self.display[(x * y) as usize] = true;
-                        }
-                    }
-                }
-                self.variable_registers[0xF] = if flipped { 1 } else { 0 };
+                self.display_sprite(nibble2, nibble3, nibble4);
             }
+            // SKIP IF KEY IS PRESSED
+            (0xE, _, 9, 0xE) => {
+                let vx = self.variable_registers[nibble2 as usize];
+                let key_pressed = self.keys[vx as usize];
+                if key_pressed {
+                    self.pc += 2;
+                }
+            }
+            // SKIP IF KEY IS NOT PRESSED
+            (0xE, _, 0xA, 1) => {
+                let vx = self.variable_registers[nibble2 as usize];
+                let key_pressed = self.keys[vx as usize];
+                if !key_pressed {
+                    self.pc += 2;
+                }
+            }
+            // VX = DT
+            (0xF, _, 0, 7) => {
+                self.variable_registers[nibble2 as usize] = self.delay_timer;
+            }
+            // WAIT FOR KEY PRESS
+            (0xF, _, 0, 0xA) => {
+                let mut pressed = false;
+                if let Some(idx) = self.keys.iter().position(|&key| key) {
+                    self.variable_registers[nibble2 as usize] = idx as u8;
+                    pressed = true;
+                }
+
+                if !pressed {
+                    self.pc -= 2;
+                }
+            }
+            // DT = VX
+            (0xF, _, 1, 5) => {
+                self.delay_timer = self.variable_registers[nibble2 as usize];
+            }
+            // ST = VX
+            (0xF, _, 1, 8) => {
+                self.sound_timer = self.variable_registers[nibble2 as usize];
+            }
+            // I += VX
+            (0xF, _, 1, 0xE) => {
+                self.index_register = self
+                    .index_register
+                    .wrapping_add(self.variable_registers[nibble2 as usize] as u16);
+            }
+            // SET I TO FONT ADDRESS
+            (0xF, _, 2, 9) => {
+                let c = self.variable_registers[nibble2 as usize] as u16;
+                // RAM address is value * 5 as every char in the font takes up 5 bytes
+                self.index_register = c * 5;
+            }
+            // BCD OF VX
+            (0xF, _, 3, 3) => {
+                let mut x = self.variable_registers[nibble2 as usize];
+                let i = self.index_register as usize;
+
+                // turn x into three decimal digits
+                // store decimal 1 in I, 2 in I+1, 3 in I+2
+                let least = x % 10;
+                x /= 10;
+                let middle = x % 10;
+                x /= 10;
+                let highest = x % 10;
+
+                self.variable_registers[i] = highest;
+                self.variable_registers[i + 1] = middle;
+                self.variable_registers[i + 2] = least;
+            }
+            // STORE V0 TO VX INTO I
+            (0xF, _, 5, 5) => {
+                for idx in 0..nibble2 {
+                    self.memory[(nibble2 + idx) as usize] = self.variable_registers[idx as usize];
+                }
+            }
+            // LOAD V0 TO VX INTO I
+            (0xF, _, 6, 5) => {
+                for idx in 0..nibble2 {
+                    self.variable_registers[idx as usize] = self.memory[(nibble2 + idx) as usize];
+                }
+            }
+
             (_, _, _, _) => unimplemented!("Opcode not implemented: {op}"),
+        }
+    }
+
+    fn display_sprite(&mut self, nibble2: u16, nibble3: u16, nibble4: u16) {
+        let x = self.variable_registers[nibble2 as usize] as usize % SCREEN_WIDTH;
+        let y = self.variable_registers[nibble3 as usize] as usize % SCREEN_HEIGHT;
+
+        let mut flipped = false;
+        let mask: u8 = 0b10000000;
+        self.variable_registers[0xF] = 0;
+
+        for row in 0..nibble4 {
+            let sprite_row = self.index_register + row;
+            let pixel = self.memory[sprite_row as usize];
+            for column in 0..8 {
+                if (pixel & (mask >> column)) != 0 {
+                    let idx = x + SCREEN_WIDTH * y;
+                    flipped |= self.display[idx];
+                    self.display[idx] ^= true;
+                }
+            }
+            self.variable_registers[0xF] = if flipped { 1 } else { 0 };
         }
     }
 
