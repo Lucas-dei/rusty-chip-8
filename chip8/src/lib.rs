@@ -241,7 +241,7 @@ impl Cpu {
                 // Iterate over each row of our sprite
                 for y_line in 0..num_rows {
                     // Determine which memory address our row's data is stored
-                    let addr = self.index_register + y_line as u16;
+                    let addr = self.index_register + y_line;
                     let pixels = self.memory[addr as usize];
                     // Iterate over each column in our row
                     for x_line in 0..8 {
