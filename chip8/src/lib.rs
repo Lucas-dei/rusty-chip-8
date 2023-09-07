@@ -351,11 +351,8 @@ impl Cpu {
                 let x = nibble2 as usize;
                 let vx = self.variable_registers[x] as f32;
 
-                // Fetch the hundreds digit by dividing by 100 and tossing the decimal
                 let hundreds = (vx / 100.0).floor() as u8;
-                // Fetch the tens digit by dividing by 10, tossing the ones digit and the decimal
                 let tens = ((vx / 10.0) % 10.0).floor() as u8;
-                // Fetch the ones digit by tossing the hundreds and the tens
                 let ones = (vx % 10.0) as u8;
 
                 self.memory[self.index_register as usize] = hundreds;
@@ -364,14 +361,16 @@ impl Cpu {
             }
             // STORE V0 TO VX INTO I
             (0xF, _, 5, 5) => {
+                let i = self.index_register;
                 for idx in 0..=nibble2 {
-                    self.memory[(nibble2 + idx) as usize] = self.variable_registers[idx as usize];
+                    self.memory[(i + idx) as usize] = self.variable_registers[idx as usize];
                 }
             }
             // LOAD V0 TO VX INTO I
             (0xF, _, 6, 5) => {
+                let i = self.index_register;
                 for idx in 0..=nibble2 {
-                    self.variable_registers[idx as usize] = self.memory[(nibble2 + idx) as usize];
+                    self.variable_registers[idx as usize] = self.memory[(i + idx) as usize];
                 }
             }
 
