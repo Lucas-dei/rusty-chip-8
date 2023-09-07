@@ -1,5 +1,3 @@
-#![allow(unused_variables)]
-
 use rand::random;
 use std::io;
 
@@ -90,7 +88,6 @@ impl Cpu {
     }
 
     fn execute(&mut self, op: u16) {
-        println!("{:0x?}", op);
         let nibble1 = (op & 0xF000) >> 12;
         let nibble2 = (op & 0x0F00) >> 8;
         let nibble3 = (op & 0x00F0) >> 4;
@@ -102,7 +99,7 @@ impl Cpu {
             // CLEAR SCREEN
             (0, 0, 0xE, 0) => self.clear_screen(),
             // RETURN FROM SUBROUTINE
-            (0, 0, x, y) => {
+            (0, 0, 0xE, 0xE) => {
                 self.pc = self.pop();
             }
             // JUMP
@@ -130,7 +127,7 @@ impl Cpu {
                 }
             }
             // SKIP IF VX == VY
-            (5, _, _, 0) => {
+            (5, _, _, _) => {
                 if self.variable_registers[nibble2 as usize]
                     == self.variable_registers[nibble3 as usize]
                 {
@@ -261,6 +258,12 @@ impl Cpu {
                         }
                     }
                 }
+                // Populate VF register
+                if flipped {
+                    self.variable_registers[0xF] = 1;
+                } else {
+                    self.variable_registers[0xF] = 0;
+                }
             }
             // SKIP IF KEY IS PRESSED
             (0xE, _, 9, 0xE) => {
@@ -330,20 +333,34 @@ impl Cpu {
             }
             // BCD OF VX
             (0xF, _, 3, 3) => {
-                let mut x = self.variable_registers[nibble2 as usize];
-                let i = self.index_register as usize;
+                // let mut x = self.variable_registers[nibble2 as usize];
+                // let i = self.index_register as usize;
 
-                // turn x into three decimal digits
-                // store decimal 1 in I, 2 in I+1, 3 in I+2
-                let least = x % 10;
-                x /= 10;
-                let middle = x % 10;
-                x /= 10;
-                let highest = x % 10;
+                // // turn x into three decimal digits
+                // // store decimal 1 in I, 2 in I+1, 3 in I+2
+                // let least = x % 10;
+                // x /= 10;
+                // let middle = x % 10;
+                // x /= 10;
+                // let highest = x % 10;
 
-                self.memory[i] = highest;
-                self.memory[i + 1] = middle;
-                self.memory[i + 2] = least;
+                // self.memory[i] = highest;
+                // self.memory[i + 1] = middle;
+                // self.memory[i + 2] = least;
+
+                let x = nibble2 as usize;
+                let vx = self.variable_registers[x] as f32;
+
+                // Fetch the hundreds digit by dividing by 100 and tossing the decimal
+                let hundreds = (vx / 100.0).floor() as u8;
+                // Fetch the tens digit by dividing by 10, tossing the ones digit and the decimal
+                let tens = ((vx / 10.0) % 10.0).floor() as u8;
+                // Fetch the ones digit by tossing the hundreds and the tens
+                let ones = (vx % 10.0) as u8;
+
+                self.memory[self.index_register as usize] = hundreds;
+                self.memory[(self.index_register + 1) as usize] = tens;
+                self.memory[(self.index_register + 2) as usize] = ones;
             }
             // STORE V0 TO VX INTO I
             (0xF, _, 5, 5) => {
